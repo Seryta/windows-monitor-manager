@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "monitor-lib",
+    "monitor-service",
+]
+resolver = "2"
