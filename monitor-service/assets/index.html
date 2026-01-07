@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitor Manager</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f0f2f5; display: flex; justify-content: center; padding: 20px; }
+        .container { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 600px; }
+        h1 { margin-top: 0; color: #333; }
+        .monitor-list { display: grid; gap: 1rem; margin-bottom: 2rem; }
+        .monitor-card { border: 1px solid #ddd; padding: 1rem; border-radius: 6px; background: #fafafa; cursor: pointer; transition: all 0.2s; }
+        .monitor-card:hover { border-color: #2196F3; background: #e3f2fd; transform: translateY(-2px); box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .monitor-card.active { border-color: #4CAF50; background: #e8f5e9; }
+        .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 0.8em; color: white; margin-left: 5px; }
+        .badge.active { background: #4CAF50; }
+        .badge.inactive { background: #9e9e9e; }
+        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        button { padding: 10px; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; transition: background 0.2s; }
+        button.primary { background: #2196F3; color: white; }
+        button.primary:hover { background: #1976D2; }
+        button.secondary { background: #607D8B; color: white; }
+        button.secondary:hover { background: #455A64; }
+        .hint { font-size: 0.85em; color: #666; margin-bottom: 0.5rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Display Manager</h1>
+        
+        <h3>Physical Monitors</h3>
+        <div class="hint">Click on a monitor to activate it exclusively (Show Only on X)</div>
+        <div id="monitor-list" class="monitor-list">
+            <div>Loading...</div>
+        </div>
+
+        <h3>Quick Actions</h3>
+        <div class="controls">
+            <button class="primary" onclick="setTopology('Internal')">PC Only (Internal)</button>
+            <button class="primary" onclick="setTopology('External')">Second Screen Only</button>
+            <button class="secondary" onclick="setTopology('Extend')">Extend</button>
+            <button class="secondary" onclick="setTopology('Clone')">Duplicate</button>
+        </div>
+        <div id="status" style="margin-top: 1rem; color: #666;"></div>
+    </div>
+
+    <script>
+        async function loadMonitors() {
+            try {
+                const res = await fetch('/api/monitors');
+                const monitors = await res.json();
+                const list = document.getElementById('monitor-list');
+                list.innerHTML = '';
+                
+                if (monitors.length === 0) {
+                    list.innerHTML = '<div>No monitors found (or API error).</div>';
+                    return;
+                }
+
+                monitors.forEach(m => {
+                    const card = document.createElement('div');
+                    card.className = `monitor-card ${m.is_active ? 'active' : ''}`;
+                    // Pass full CCD ID components
+                    card.onclick = () => setSingleMonitor(m.adapter_id_low, m.adapter_id_high, m.target_id, m.name);
+                    card.title = "Click to show ONLY on this monitor";
+                    card.innerHTML = `
+                        <strong>${m.device_string || m.name}</strong> (ID: ${m.id})
+                        <div>
+                            <span class="badge ${m.is_active ? 'active' : 'inactive'}">${m.is_active ? 'Active' : 'Inactive'}</span>
+                            ${m.is_primary ? '<span class="badge active">Primary</span>' : ''}
+                            ${m.is_attached ? '<span class="badge active">Attached</span>' : '<span class="badge inactive">Detached</span>'}
+                        </div>
+                    `;
+                    list.appendChild(card);
+                });
+            } catch (e) {
+                document.getElementById('monitor-list').innerText = 'Error loading monitors: ' + e;
+            }
+        }
+
+        async function setSingleMonitor(low, high, target, name) {
+            if (!confirm(`Switch to ONLY ${name}?`)) return;
+            // Mode struct in Rust expects: { "Single": "low:high:target" }
+            const idStr = `${low}:${high}:${target}`;
+            setTopology({ "Single": idStr });
+        }
+
+        async function setTopology(mode) {
+            const status = document.getElementById('status');
+            const modeName = typeof mode === 'string' ? mode : `Single Monitor ${mode.Single}`;
+            status.innerText = `Setting mode to ${modeName}...`;
+            
+            try {
+                const res = await fetch('/api/topology', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ mode })
+                });
+                const txt = await res.json();
+                status.innerText = txt;
+                setTimeout(loadMonitors, 2000); // Reload after switch
+            } catch (e) {
+                status.innerText = 'Error: ' + e;
+            }
+        }
+
+        loadMonitors();
+    </script>
+</body>
+</html>
