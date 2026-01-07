@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        target: [x86_64-pc-windows-msvc]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: stable
+        target: ${{ matrix.target }}
+
+    - name: Build Release
+      run: cargo build --release --target ${{ matrix.target }}
+
+    - name: Package
+      shell: pwsh
+      run: |
+        mkdir release
+        copy target/${{ matrix.target }}/release/monitor-service.exe release/
+        copy README.md release/
+        copy README_zh-CN.md release/
+        cd release
+        7z a ../monitor-service-${{ matrix.target }}.zip *
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: monitor-service-${{ matrix.target }}.zip
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
